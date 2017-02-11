@@ -24,13 +24,17 @@ const msg = {
 const Telegraf = require('telegraf'),
       { Extra, Markup } = require('telegraf'),
       db = require('./db'),
-      uuid = require('uuid/v4');
-
-const TravisCINotifications = require('./travisCINotifications');
-let travis = new TravisCINotifications();
+      uuid = require('uuid/v4'),
+      express = require("express")(),
+      bodyParser = require('body-parser');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.use(Telegraf.memorySession());
+
+bot.telegram.setWebhook(`${process.env.URL}/telegram-webhook`);
+express.use(bot.webhookCallback('/telegram-webhook'));
+express.use(bodyParser.urlencoded({ extended: false }));
+express.use(bodyParser.json());
 
 bot.command('start', (ctx) => {
     ctx.reply(msg.START);
@@ -106,9 +110,9 @@ bot.on('text', (ctx) => {
     }
 });
 
-bot.startWebhook('/telegram-webhook', null, 5001);
-
-travis.on('notify', (secret, payload) => {
+express.post('/notify', (req, res) => {
+    let secret = req.query.secret;
+    let payload = JSON.parse(req.body.payload);
     db.get(payload.repository.name).then(record => {
         if (record != null) {
             if (!secret || (secret && record.secretPhrase == secret)) {
@@ -118,4 +122,6 @@ travis.on('notify', (secret, payload) => {
     }).catch(err => {});
 });
 
-travis.startWebhook(8080);
+express.listen(process.env.PORT, () => {
+    console.log('Webhooks listening on port', process.env.PORT);
+});
