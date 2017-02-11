@@ -13,7 +13,7 @@
     "body-parser": "^1.16.1",
     "express": "^4.14.1",
     "mongoose": "^4.8.2",
-    "telegraf": "^3.6.5",
-    "uuid": "^3.0.1"
+    "shortid": "^2.2.6",
+    "telegraf": "^3.6.5"
   }
 }

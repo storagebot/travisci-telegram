@@ -8,6 +8,7 @@ const states = {
     WAITING_FOR_REPO_TYPE: 2,
     WAITING_FOR_SECRET_PHRASE: 3,
     WAITING_FOR_START: 4,
+    WAITING_FOR_DELETING_REPO: 5
 };
 
 // Messages
@@ -18,27 +19,38 @@ const msg = {
     WAITING_FOR_CHAT_TYPE: `Please, choose where you would like to receive build notifications from `,
     WAITING_FOR_SECRET_PHRASE: `Please, type secret phrase.`,
     SUCCESS: 'Success',
-    UNEXPECTED_ERROR: 'Unexpected error occurred, try again.'
+    UNEXPECTED_ERROR: 'Unexpected error occurred, try again.',
+    LIST: 'Here is the list of repos in this chat:',
+    LIST_EMPTY: 'You have no repos in this chat!',
+    WAITING_FOR_DELETING_REPO: 'Please choose the repo you\'d like to remove',
+    SUCCESS_DELETE: 'Successfully removed repo from this chat!'
+
 };
 
 const Telegraf = require('telegraf'),
       { Extra, Markup } = require('telegraf'),
       db = require('./db'),
-      uuid = require('uuid/v4'),
+      uuid = require('shortid'),
       express = require("express")(),
       bodyParser = require('body-parser');
 
 const TOKEN = process.env.BOT_TOKEN || '';
 const URL = process.env.URL || 'https://your-app-url.com';
 const PORT = process.env.PORT || 8443;
+let USERNAME = 'bot';
+
 
 const bot = new Telegraf(TOKEN);
 bot.use(Telegraf.memorySession());
 
-bot.telegram.setWebhook(`${URL}/telegram-webhook`);
-express.use(bot.webhookCallback('/telegram-webhook'));
+express.use(bot.webhookCallback(`/telegram-webhook${TOKEN}`));
 express.use(bodyParser.urlencoded({ extended: false }));
 express.use(bodyParser.json());
+
+bot.telegram.getMe().then(me => {
+    USERNAME = me.username;
+    bot.telegram.setWebhook(`${URL}/telegram-webhook${TOKEN}`);
+});
 
 bot.command('start', (ctx) => {
     ctx.reply(msg.START);
@@ -51,7 +63,30 @@ bot.command('link', (ctx) => {
 
 bot.command('cancel', (ctx) => {
     ctx.session.state = states.DEFAULT;
-    ctx.reply(msg.START);
+    ctx.reply(msg.START, Markup.removeKeyboard().extra());
+});
+
+bot.command('list', (ctx) => {
+    db.allByChatId(ctx.chat.id).then(records => {
+        let repos = records.map(record => record.repo);
+        if (!repos.length) {
+            ctx.reply(msg.LIST_EMPTY);
+        } else {
+            ctx.reply(msg.LIST + "\n" + repos.join("\n"));
+        }
+    }).catch(err => {});
+});
+
+bot.command('delete', (ctx) => {
+    db.allByChatId(ctx.chat.id).then(records => {
+        let repos = records.map(record => record.repo);
+        if (!repos.length) {
+            ctx.reply(msg.LIST_EMPTY);
+        } else {
+            ctx.session.state = states.WAITING_FOR_DELETING_REPO;
+            ctx.reply(msg.WAITING_FOR_DELETING_REPO, Markup.keyboard(records.map(record => record.repo), {columns: 2}).oneTime().resize().extra());
+        }
+    }).catch(err => {});
 });
 
 bot.hears(/\/start@([^ ]+) (.*)/, (ctx) => {
@@ -63,7 +98,6 @@ bot.hears(/\/start@([^ ]+) (.*)/, (ctx) => {
         db.update(data[0], data[1], ctx.chat.id).then(res => {
             ctx.reply(msg.SUCCESS);
         }).catch(err => {
-            console.log(err);
             ctx.reply(msg.UNEXPECTED_ERROR);
             ctx.leaveChat();
         })
@@ -73,7 +107,7 @@ bot.hears(/\/start@([^ ]+) (.*)/, (ctx) => {
 bot.on('text', (ctx) => {
     if (ctx.session.state == states.WAITING_FOR_REPO) {
         ctx.session.state = states.WAITING_FOR_REPO_TYPE;
-        ctx.session.uuid = uuid();
+        ctx.session.uuid = uuid.generate();
         ctx.session.repo = ctx.message.text;
 
         ctx.reply(msg.WAITING_FOR_REPO_TYPE + ctx.message.text, Markup.keyboard(['Public', 'Private'], {columns: 2}).oneTime().resize().extra());
@@ -101,9 +135,9 @@ bot.on('text', (ctx) => {
             db.create(ctx.session.repo, id, ctx.session.secretPhrase).then(res => {
                 if (ctx.message.text == 'Group') {
                     let payload = Buffer.from(ctx.session.repo + ':' + ctx.session.uuid).toString('base64');
-                    ctx.reply(`https://t.me/${ctx.me}?startgroup=${payload}`);
+                    ctx.reply(`https://t.me/${USERNAME}?startgroup=${payload}`, Markup.removeKeyboard().extra());
                 } else {
-                    ctx.reply(msg.SUCCESS);
+                    ctx.reply(msg.SUCCESS, Markup.removeKeyboard().extra());
                 }
             }).catch(err => {
                 ctx.reply(msg.UNEXPECTED_ERROR);
@@ -111,19 +145,27 @@ bot.on('text', (ctx) => {
         } else {
             ctx.reply(msg.WAITING_FOR_CHAT_TYPE);
         }
+    } else if (ctx.session.state == states.WAITING_FOR_DELETING_REPO) {
+        db.delete(ctx.message.text, ctx.chat.id).then(_ => {
+            ctx.reply(msg.SUCCESS_DELETE, Markup.removeKeyboard().extra());
+        }).catch(err => {
+            ctx.reply(msg.UNEXPECTED_ERROR);
+        });
+        ctx.session.state = states.DEFAULT;
     }
 });
 
 express.post('/notify', (req, res) => {
     let secret = req.query.secret;
     let payload = JSON.parse(req.body.payload);
-    db.get(payload.repository.name).then(record => {
-        if (record != null) {
+    db.all(payload.repository.owner_name + '/' + payload.repository.name).then(records => {
+        records.forEach(record => {
             if (!secret || (secret && record.secretPhrase == secret)) {
-                bot.telegram.sendMessage(record.chatId, 'Test');
+                bot.telegram.sendMessage(record.chatId, payload.status_message);
             }
-        }
+        });
     }).catch(err => {});
+    res.send();
 });
 
 express.listen(PORT, () => {

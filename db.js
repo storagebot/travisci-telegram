@@ -39,7 +39,7 @@ module.exports = {
     update: (repo, oldChatId, newChatId) => {
         return Record.findOneAndUpdate({repo: repo, chatId: oldChatId}, {$set: {chatId: newChatId}}).lean().exec();
     },
-    get: (repo) => {
-        return Record.findOne({repo: repo}).lean().exec();
+    allByChatId: (chatId) => {
+        return Record.find({chatId: chatId}).lean().exec();
     }
 };
