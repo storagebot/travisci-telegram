@@ -28,10 +28,14 @@ const Telegraf = require('telegraf'),
       express = require("express")(),
       bodyParser = require('body-parser');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const TOKEN = process.env.BOT_TOKEN || '';
+const URL = process.env.URL || 'https://your-app-url.com';
+const PORT = process.env.PORT || 8443;
+
+const bot = new Telegraf(TOKEN);
 bot.use(Telegraf.memorySession());
 
-bot.telegram.setWebhook(`${process.env.URL}/telegram-webhook`);
+bot.telegram.setWebhook(`${URL}/telegram-webhook`);
 express.use(bot.webhookCallback('/telegram-webhook'));
 express.use(bodyParser.urlencoded({ extended: false }));
 express.use(bodyParser.json());
@@ -122,6 +126,6 @@ express.post('/notify', (req, res) => {
     }).catch(err => {});
 });
 
-express.listen(process.env.PORT, () => {
-    console.log('Webhooks listening on port', process.env.PORT);
+express.listen(PORT, () => {
+    console.log('Webhooks listening on port', PORT);
 });
