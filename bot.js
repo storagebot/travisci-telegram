@@ -21,15 +21,24 @@ express.use(bodyParser.json());
 let handler;
 bot.telegram.getMe().then(me => {
     bot.options.username = me.username;
+    bot.options.url = URL;
 
     // Init handlers
     handler = require('./handler')(bot);
 
     // Start telegram webhook
-    bot.startPolling()//bot.telegram.setWebhook(`${URL}/telegram-webhook${TOKEN}`);
+    bot.telegram.setWebhook(`${URL}/telegram-webhook${TOKEN}`);
+});
+
+bot.hears(/\/start@([^ ]+) (.*)/, (ctx) => {
+    ctx = handler.handleStartGroup(ctx);
 });
 
 bot.command('start', (ctx) => {
+    ctx = handler.handleStart(ctx);
+});
+
+bot.command('help', (ctx) => {
     ctx = handler.handleStart(ctx);
 });
 
@@ -47,10 +56,6 @@ bot.command('list', (ctx) => {
 
 bot.command('delete', (ctx) => {
     ctx = handler.handleDelete(ctx);
-});
-
-bot.hears(/\/start@([^ ]+) (.*)/, (ctx) => {
-    ctx = handler.handleStartGroup(ctx);
 });
 
 bot.on('text', (ctx) => {
@@ -80,7 +85,7 @@ express.post('/notify', (req, res) => {
         db.all(payload.repository.owner_name + '/' + payload.repository.name).then(records => {
             records.forEach(record => {
                 if (!secret || (secret && record.secretPhrase == secret)) {
-                    bot.telegram.sendMessage(record.chatId, payload.status_message);
+                    handler.handleTravisNotification(record.chatId, payload);
                 }
             });
         }).catch(err => {});

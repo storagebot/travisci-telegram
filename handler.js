@@ -4,7 +4,7 @@ const state = require('./state'),
       message = require('./message'),
       db = require('./db');
 
-const { Markup } = require('telegraf');
+const { Extra, Markup } = require('telegraf');
 
 module.exports = (bot) => {
     let module = {};
@@ -16,7 +16,7 @@ module.exports = (bot) => {
         ctx.session.uuid = require('shortid').generate();
         ctx.session.repo = ctx.message.text;
 
-        ctx.reply(message.WAITING_FOR_REPO_TYPE + ctx.message.text, Markup.keyboard(['Public', 'Private'], {columns: 2}).oneTime().resize().extra());
+        ctx.reply(message.WAITING_FOR_REPO_TYPE.format(ctx.message.text), Markup.keyboard(['Public', 'Private'], {columns: 2}).oneTime().resize().extra());
         return ctx;
     };
 
@@ -26,10 +26,13 @@ module.exports = (bot) => {
         if (['Public', 'Private'].includes(ctx.message.text)) {
             if (ctx.message.text == 'Private') {
                 ctx.session.state = state.WAITING_FOR_SECRET_PHRASE;
-                ctx.reply(message.WAITING_FOR_SECRET_PHRASE);
+                ctx.reply(message.WAITING_FOR_SECRET_PHRASE.format(bot.options.url), {parse_mode: 'Markdown'});
             } else {
                 ctx.session.state = state.WAITING_FOR_CHAT_TYPE;
-                ctx.reply(message.WAITING_FOR_CHAT_TYPE + ctx.session.repo, Markup.keyboard(['Private chat', 'Group'], {columns: 2}).oneTime().resize().extra());
+
+                let markup = Markup.keyboard(['Private chat', 'Group'], {columns: 2}).oneTime().resize().extra();
+                markup.parse_mode = 'Markdown';
+                ctx.reply(message.WAITING_FOR_CHAT_TYPE.format(bot.options.url, "", ctx.session.repo), markup);
             }
         } else {
             ctx.reply(message.WAITING_FOR_REPO_TYPE);
@@ -43,7 +46,9 @@ module.exports = (bot) => {
         ctx.session.state = state.WAITING_FOR_CHAT_TYPE;
         ctx.session.secretPhrase = ctx.message.text;
 
-        ctx.reply(message.WAITING_FOR_CHAT_TYPE + ctx.session.repo, Markup.keyboard(['Private chat', 'Group'], {columns: 2}).oneTime().resize().extra());
+        let markup = Markup.keyboard(['Private chat', 'Group'], {columns: 2}).oneTime().resize().extra();
+        markup.parse_mode = 'Markdown';
+        ctx.reply(message.WAITING_FOR_CHAT_TYPE.format(bot.options.url, `?secret=${ctx.session.secretPhrase}`, ctx.session.repo), markup);
 
         return ctx;
     };
@@ -56,15 +61,15 @@ module.exports = (bot) => {
             db.create(ctx.session.repo, id, ctx.session.secretPhrase).then(res => {
                 if (ctx.message.text == 'Group') {
                     let payload = Buffer.from(ctx.session.repo + ':' + ctx.session.uuid).toString('base64');
-                    ctx.reply(`https://t.me/${bot.options.username}?startgroup=${payload}`, Markup.removeKeyboard().extra());
+                    ctx.reply(message.STARTGROUP_MESSAGE.format(bot.options.username, payload), Markup.removeKeyboard().extra());
                 } else {
-                    ctx.reply(message.SUCCESS, Markup.removeKeyboard().extra());
+                    ctx.reply(message.SUCCESS.format(ctx.session.repo), Markup.removeKeyboard().extra());
                 }
             }).catch(err => {
                 ctx.reply(message.UNEXPECTED_ERROR);
             });
         } else {
-            ctx.reply(message.WAITING_FOR_CHAT_TYPE);
+            ctx.reply(message.WAITING_FOR_CHAT_TYPE_AGAIN.format(ctx.session.repo));
         }
 
         return ctx;
@@ -106,7 +111,7 @@ module.exports = (bot) => {
             if (!repos.length) {
                 ctx.reply(message.LIST_EMPTY);
             } else {
-                ctx.reply(message.LIST + "\n" + repos.join("\n"));
+                ctx.reply(message.LIST.format(repos.join("\n")));
             }
         }).catch(err => {});
         return ctx;
@@ -132,13 +137,33 @@ module.exports = (bot) => {
             ctx.leaveChat();
         } else {
             db.update(data[0], data[1], ctx.chat.id).then(res => {
-                ctx.reply(message.SUCCESS);
+                ctx.reply(message.SUCCESS.format(data[0]));
             }).catch(err => {
                 ctx.reply(message.UNEXPECTED_ERROR);
                 ctx.leaveChat();
             })
         }
         return ctx;
+    };
+
+    module.handleTravisNotification = (targetChatId, payload) => {
+        let notificationTemplate = message.NOTIFICATION_MAIN;
+
+        let buildDuration = '', duration = require('moment').duration(payload.duration, 'seconds');
+        buildDuration += duration.days() ? duration.days() + ' d ' : '';
+        buildDuration += duration.hours() ? duration.hours() + ' h ' : '';
+        buildDuration += duration.minutes() ? duration.minutes() + ' min ' : '';
+        buildDuration += duration.seconds() ? duration.seconds() + ' sec ' : '';
+
+        notificationTemplate = notificationTemplate.format((payload.result == 0 ? '✅' : '❌'),
+            `[#${payload.number}](${payload.build_url})`,
+            `[${payload.commit.slice(0, 6)}](${payload.compare_url})`,
+            payload.repository.owner_name + "/" + payload.repository.name,
+            payload.branch,
+            payload.author_name,
+            payload.state,
+            buildDuration);
+        bot.telegram.sendMessage(targetChatId, notificationTemplate, {parse_mode: 'Markdown'});
     };
 
     return module;
