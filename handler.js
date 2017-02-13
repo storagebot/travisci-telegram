@@ -12,28 +12,36 @@ module.exports = (bot) => {
     module.handleRepoEnter = (ctx) => {
         // Just save repo and go to next state
         // Then send keyboard with repo type
-        ctx.session.state = state.WAITING_FOR_REPO_TYPE;
-        ctx.session.uuid = require('shortid').generate();
-        ctx.session.repo = ctx.message.text;
+        if (ctx.message.text.split('/').length != 2) {
+            ctx.reply(message.REPO_VALIDATE_NAME, {parse_mode: 'Markdown'});
+        } else {
+            db.allByChatId(ctx.chat.id).then(records => {
+                if (records.some(record => record.repo == ctx.message.text)) {
+                    ctx.reply(message.REPO_VALIDATE_EXIST, {parse_mode: 'Markdown'});
+                } else {
+                    ctx.session.state = state.WAITING_FOR_REPO_TYPE;
+                    ctx.session.uuid = require('shortid').generate();
+                    ctx.session.repo = ctx.message.text;
 
-        ctx.reply(message.WAITING_FOR_REPO_TYPE.format(ctx.message.text), Markup.keyboard(['Public', 'Private'], {columns: 2}).oneTime().resize().extra());
+                    ctx.reply(message.WAITING_FOR_REPO_TYPE.format(ctx.message.text), Markup.keyboard(['Public', 'Private'], {columns: 2}).oneTime().resize().extra());
+                }
+            }).catch(err => {});
+        }
         return ctx;
     };
 
     module.handleRepoType = (ctx) => {
         // Get message with repo type from user. If type is 'Private' add stage with secret phrase
         // Then send keyboard for choosing target chat
-        if (['Public', 'Private'].includes(ctx.message.text)) {
-            if (ctx.message.text == 'Private') {
-                ctx.session.state = state.WAITING_FOR_SECRET_PHRASE;
-                ctx.reply(message.WAITING_FOR_SECRET_PHRASE.format(bot.options.url), {parse_mode: 'Markdown'});
-            } else {
-                ctx.session.state = state.WAITING_FOR_CHAT_TYPE;
+        if (ctx.message.text == 'Private') {
+            ctx.session.state = state.WAITING_FOR_SECRET_PHRASE;
+            ctx.reply(message.WAITING_FOR_SECRET_PHRASE.format(bot.options.url), {parse_mode: 'Markdown'});
+        } else if (ctx.message.text == 'Public') {
+            ctx.session.state = state.WAITING_FOR_CHAT_TYPE;
 
-                let markup = Markup.keyboard(['Private chat', 'Group'], {columns: 2}).oneTime().resize().extra();
-                markup.parse_mode = 'Markdown';
-                ctx.reply(message.WAITING_FOR_CHAT_TYPE.format(bot.options.url, "", ctx.session.repo), markup);
-            }
+            let markup = Markup.keyboard(['Private chat', 'Group'], {columns: 2}).oneTime().resize().extra();
+            markup.parse_mode = 'Markdown';
+            ctx.reply(message.WAITING_FOR_CHAT_TYPE.format(bot.options.url, "", ctx.session.repo), markup);
         } else {
             ctx.reply(message.WAITING_FOR_REPO_TYPE);
         }
@@ -93,9 +101,13 @@ module.exports = (bot) => {
     };
 
     module.handleStartLinking = (ctx) => {
-        ctx.session.state = state.WAITING_FOR_REPO;
-        ctx.reply(message.WAITING_FOR_REPO);
-        return ctx;
+        if (ctx.chat.id < 0) {
+            ctx.reply(message.LINK_FROM_GROUP);
+        } else {
+            ctx.session.state = state.WAITING_FOR_REPO;
+            ctx.reply(message.WAITING_FOR_REPO, {parse_mode: 'Markdown'});
+            return ctx;
+        }
     };
 
     module.handleCancel = (ctx) => {
