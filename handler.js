@@ -96,7 +96,7 @@ module.exports = (bot) => {
     };
 
     module.handleStart = (ctx) => {
-        ctx.reply(message.START);
+        ctx.reply(message.START, {disable_web_page_preview: true});
         return ctx;
     };
 
@@ -113,7 +113,7 @@ module.exports = (bot) => {
     module.handleCancel = (ctx) => {
         // Reset session and remove keyboard
         ctx.session.state = state.DEFAULT;
-        ctx.reply(message.START, Markup.removeKeyboard().extra());
+        ctx.reply(message.START, {disable_web_page_preview: true, reply_markup: {remove_keyboard: true}});
         return ctx;
     };
 

@@ -4,7 +4,7 @@ String.prototype.format = function() {
 };
 
 module.exports = {
-    START: "I'm a Travis CI bot. I can notify you about builds of your repositories.\n\nAvailable commands:\n" +
+    START: "I'm a Travis CI bot. I can notify you about builds of your repositories.\n\nSource code available on GitHub: https://git.io/v7r36\n\nAvailable commands:\n" +
     "/link - Add new repository to receive notifications from Travis CI\n" +
     "/list - List all current repositories\n" +
     "/delete - Delete repository\n" +
